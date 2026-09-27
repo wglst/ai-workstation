@@ -1,25 +1,10 @@
 #cloud-config
+# Optional adapter for providers/VMs that accept cloud-init user-data.
+# This cloud-init does not contain credentials. SSH keys are deployment inputs.
+# It stages the public v0.5 release archive or repository payload separately.
+# For initial testing, use stage-next-boot.sh directly after copying the package.
+
 package_update: false
 package_upgrade: false
 
-write_files:
-  - path: /usr/local/sbin/ai-workstation-bootstrap
-    owner: root:root
-    permissions: "0755"
-    content: |
-      #!/usr/bin/env bash
-      set -Eeuo pipefail
-
-      INSTALL_URL="https://raw.githubusercontent.com/wglst/ai-workstation/9f10640cefc9e3fd9e5942869b825dc617baadb6/install.sh"
-      VERIFY_URL="https://raw.githubusercontent.com/wglst/ai-workstation/9f10640cefc9e3fd9e5942869b825dc617baadb6/verify.sh"
-
-      tmp="$(mktemp -d)"
-      trap 'rm -rf "$tmp"' EXIT
-
-      curl -fsSL "$INSTALL_URL" -o "$tmp/install.sh"
-      curl -fsSL "$VERIFY_URL" -o "$tmp/verify.sh"
-      chmod +x "$tmp/install.sh" "$tmp/verify.sh"
-      "$tmp/install.sh"
-
-runcmd:
-  - [bash, -lc, "/usr/local/sbin/ai-workstation-bootstrap"]
+final_message: "AI Workstation cloud-init adapter loaded. Use the packaged stage-next-boot.sh until a release URL is pinned."
