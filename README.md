@@ -1,54 +1,53 @@
-# AI Workstation v0.4
+# AI Workstation v0.5
 
-Canonical model:
+Portable, one-time boot provisioning for an Ubuntu engineering workstation.
 
-Fresh Ubuntu -> tiny bootstrap -> versioned install.sh -> verify.sh -> PASS/FAIL report
+## Operating model
 
-## Design rules
+The package is provider-agnostic. The substrate only needs to supply a fresh Ubuntu machine and an SSH public key for first access.
 
-- The operator's Mac is not part of the workstation architecture.
-- No Terraform or Ansible is required on the operator machine.
-- Provider-specific logic is limited to creating Ubuntu and injecting a bootstrap.
-- `install.sh` is the canonical workstation build.
-- `verify.sh` is the acceptance contract.
-- Every install run is logged to `/var/log/ai-workstation/install.log`.
-- Verification is written to `/var/log/ai-workstation/report.txt`.
-- SSH keys are deployment inputs; they are never baked into the workstation spec.
-- Secrets are never embedded in the repository or image.
-- Release URLs should be pinned to a version tag or immutable commit.
+1. Copy this package to the fresh Ubuntu machine.
+2. Run `stage-next-boot.sh` once as root.
+3. Reboot.
+4. On the next boot, systemd provisions and verifies the workstation automatically.
+5. If verification succeeds, the one-shot service disables itself and schedules one final reboot.
+6. The following boot is the finished workstation.
 
-## Files
+## Stage command
 
-- `install.sh` — installs and configures the workstation.
-- `verify.sh` — validates required tools, services, paths, and versions.
-- `bootstrap/bootstrap.sh` — generic bootstrap for any provider or local VM.
-- `bootstrap/cloud-init.yaml` — cloud-init wrapper for providers/VMs supporting cloud-init.
+```bash
+sudo ./stage-next-boot.sh
+sudo reboot
+```
 
-## First deployment
+## Logs and status
 
-1. Put this package in a private or public Git repository.
-2. Create a version/tag, for example `v0.4`.
-3. Replace the two `REPLACE_WITH_VERSIONED_RAW_*_URL` placeholders in the bootstrap.
-4. Create a fresh Ubuntu VM/Droplet and inject the cloud-init file.
-5. Let cloud-init complete.
-6. SSH into the machine and run:
+- `/var/log/ai-workstation/install.log`
+- `/var/log/ai-workstation/report.txt`
+- `/var/log/ai-workstation/first-boot.log`
+- `/var/log/ai-workstation/final-verification.txt`
+- `/var/lib/ai-workstation/provisioned` — success marker
+
+Check status after provisioning:
 
 ```bash
 cat /var/log/ai-workstation/report.txt
+cat /var/log/ai-workstation/final-verification.txt
+systemctl status ai-workstation-firstboot.service --no-pager
 ```
 
-For full diagnostics:
+## Recovery behavior
+
+If provisioning fails, the success marker is not created. The service remains enabled and will try again on the next reboot. Inspect the logs before retrying.
+
+To intentionally re-run provisioning after a successful build:
 
 ```bash
-cat /var/log/ai-workstation/install.log
+sudo rm -f /var/lib/ai-workstation/provisioned
+sudo systemctl enable ai-workstation-firstboot.service
+sudo reboot
 ```
 
-## Authentication
+## Security rule
 
-The package installs Codex CLI, Claude Code, GitHub CLI, and Tailscale, but intentionally does not store credentials.
-Authenticate those services after provisioning or inject credentials through a separate secret-management mechanism.
-
-## Golden image
-
-Only create a golden image after `verify-ai-workstation` returns `RESULT: PASS`.
-The script remains the source of truth; the image is a restore/acceleration artifact.
+Do not bake private keys, API tokens, GitHub authentication, Codex authentication, Claude authentication, or Tailscale authentication into this package. SSH public keys are deployment inputs supplied by DigitalOcean, cloud-init, UTM, or another substrate.
