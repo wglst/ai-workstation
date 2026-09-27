@@ -10,9 +10,8 @@ write_files:
       #!/usr/bin/env bash
       set -Eeuo pipefail
 
-      # Replace these with immutable/versioned raw URLs before deployment.
-      INSTALL_URL="REPLACE_WITH_VERSIONED_RAW_INSTALL_URL"
-      VERIFY_URL="REPLACE_WITH_VERSIONED_RAW_VERIFY_URL"
+      INSTALL_URL="https://raw.githubusercontent.com/wglst/ai-workstation/9f10640cefc9e3fd9e5942869b825dc617baadb6/install.sh"
+      VERIFY_URL="https://raw.githubusercontent.com/wglst/ai-workstation/9f10640cefc9e3fd9e5942869b825dc617baadb6/verify.sh"
 
       tmp="$(mktemp -d)"
       trap 'rm -rf "$tmp"' EXIT
