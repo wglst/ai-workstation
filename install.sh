@@ -46,7 +46,7 @@ if [[ "${EUID}" -ne 0 ]]; then
   exit 1
 fi
 
-# shellcheck source=/etc/os-release
+# shellcheck disable=SC1091
 . /etc/os-release
 if [[ "${ID:-}" != "ubuntu" || "${VERSION_ID:-}" != "24.04" ]]; then
   echo "ERROR: Ubuntu 24.04 LTS is required. Detected: ${PRETTY_NAME:-unknown}" >&2

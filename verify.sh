@@ -40,7 +40,7 @@ check_cmd() {
   fi
 }
 
-# shellcheck source=/etc/os-release
+# shellcheck disable=SC1091
 . /etc/os-release
 pass "Ubuntu" "${PRETTY_NAME:-unknown}"
 pass "Architecture" "$(uname -m)"
