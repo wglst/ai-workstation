@@ -1,7 +1,7 @@
 #cloud-config
 # Optional adapter for providers/VMs that accept cloud-init user-data.
 # This cloud-init does not contain credentials. SSH keys are deployment inputs.
-# It stages the public v0.5 release archive or repository payload separately.
+# It stages the public v0.6 release archive or repository payload separately.
 # For initial testing, use stage-next-boot.sh directly after copying the package.
 
 package_update: false

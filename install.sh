@@ -1,10 +1,22 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-VERSION="0.4"
+VERSION="0.6"
 LOG_DIR="/var/log/ai-workstation"
 LOG_FILE="$LOG_DIR/install.log"
 REPORT_FILE="$LOG_DIR/report.txt"
+CONFIG_FILE="/etc/ai-workstation/config.env"
+
+if [[ -r "$CONFIG_FILE" ]]; then
+  # shellcheck disable=SC1090
+  . "$CONFIG_FILE"
+fi
+AI_WORKSTATION_USER="${AI_WORKSTATION_USER:-harry}"
+
+if [[ "$AI_WORKSTATION_USER" == "root" || ! "$AI_WORKSTATION_USER" =~ ^[a-z_][a-z0-9_-]*$ ]]; then
+  echo "ERROR: invalid AI_WORKSTATION_USER: $AI_WORKSTATION_USER" >&2
+  exit 1
+fi
 
 mkdir -p "$LOG_DIR"
 touch "$LOG_FILE"
@@ -35,8 +47,8 @@ if [[ "${EUID}" -ne 0 ]]; then
 fi
 
 . /etc/os-release
-if [[ "${ID:-}" != "ubuntu" ]]; then
-  echo "ERROR: Ubuntu is required. Detected: ${PRETTY_NAME:-unknown}" >&2
+if [[ "${ID:-}" != "ubuntu" || "${VERSION_ID:-}" != "24.04" ]]; then
+  echo "ERROR: Ubuntu 24.04 LTS is required. Detected: ${PRETTY_NAME:-unknown}" >&2
   exit 1
 fi
 
@@ -52,12 +64,16 @@ apt-get update
 apt-get -y upgrade
 
 echo "==> Installing base packages"
+# Prevent the XRDP package from briefly opening a public listener before its
+# private binding is written below.
+systemctl mask xrdp.service xrdp-sesman.service >/dev/null 2>&1 || true
 apt-get install -y \
   ca-certificates curl wget gnupg lsb-release apt-transport-https \
   git jq unzip zip tar xz-utils build-essential \
   python3 python3-pip python3-venv pipx \
   ripgrep fd-find sqlite3 shellcheck zsh fzf \
-  micro bat eza openssh-client openssh-server
+  micro bat eza openssh-client openssh-server git-lfs unattended-upgrades \
+  xfce4 xfce4-goodies xrdp xorgxrdp dbus-x11
 
 # Ubuntu names these binaries differently.
 ln -sf "$(command -v fdfind)" /usr/local/bin/fd
@@ -97,6 +113,47 @@ echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubc
 apt-get update
 apt-get install -y gh
 
+echo "==> Installing Visual Studio Code"
+curl -fsSL https://packages.microsoft.com/keys/microsoft.asc \
+  | gpg --batch --yes --dearmor -o /etc/apt/keyrings/packages.microsoft.gpg
+chmod go+r /etc/apt/keyrings/packages.microsoft.gpg
+cat > /etc/apt/sources.list.d/vscode.sources <<EOF
+Types: deb
+URIs: https://packages.microsoft.com/repos/code
+Suites: stable
+Components: main
+Architectures: $(dpkg --print-architecture)
+Signed-By: /etc/apt/keyrings/packages.microsoft.gpg
+EOF
+apt-get update
+apt-get install -y code
+
+echo "==> Installing graphical browser"
+case "$(dpkg --print-architecture)" in
+  amd64)
+    curl -fsSL https://dl.google.com/linux/linux_signing_key.pub \
+      | gpg --batch --yes --dearmor -o /etc/apt/keyrings/google-chrome.gpg
+    chmod go+r /etc/apt/keyrings/google-chrome.gpg
+    cat > /etc/apt/sources.list.d/google-chrome.sources <<'EOF'
+Types: deb
+URIs: https://dl.google.com/linux/chrome/deb/
+Suites: stable
+Components: main
+Architectures: amd64
+Signed-By: /etc/apt/keyrings/google-chrome.gpg
+EOF
+    apt-get update
+    apt-get install -y google-chrome-stable
+    ;;
+  arm64)
+    apt-get install -y chromium-browser
+    ;;
+  *)
+    echo "ERROR: no supported graphical browser for $(dpkg --print-architecture)" >&2
+    exit 1
+    ;;
+esac
+
 echo "==> Installing uv"
 curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh
 
@@ -119,7 +176,38 @@ chsh -s "$(command -v zsh)" root
 
 echo "==> Creating workspace"
 mkdir -p /workspace/projects
+if ! id "$AI_WORKSTATION_USER" >/dev/null 2>&1; then
+  adduser --disabled-password --gecos "" --shell "$(command -v zsh)" "$AI_WORKSTATION_USER"
+fi
+usermod -aG sudo,docker "$AI_WORKSTATION_USER"
+chsh -s "$(command -v zsh)" "$AI_WORKSTATION_USER"
+DESKTOP_GROUP="$(id -gn "$AI_WORKSTATION_USER")"
+DESKTOP_HOME="$(getent passwd "$AI_WORKSTATION_USER" | cut -d: -f6)"
+chown root:"$DESKTOP_GROUP" /workspace /workspace/projects
 chmod 0775 /workspace /workspace/projects
+printf 'startxfce4\n' > "$DESKTOP_HOME/.xsession"
+chown "$AI_WORKSTATION_USER:$DESKTOP_GROUP" "$DESKTOP_HOME/.xsession"
+chmod 0644 "$DESKTOP_HOME/.xsession"
+
+echo "==> Securing remote desktop until Tailscale is authorized"
+sed -i '/^\[Globals\]/,/^\[/{s|^port=.*|port=tcp://127.0.0.1:3389|;}' /etc/xrdp/xrdp.ini
+install -m 0755 "$(dirname "$0")/enable-rdp.sh" /usr/local/sbin/ai-workstation-enable-rdp
+install -m 0755 "$(dirname "$0")/wait-rdp-address.sh" /usr/local/sbin/ai-workstation-wait-rdp-address
+install -d -m 0755 /etc/systemd/system/xrdp.service.d
+cat > /etc/systemd/system/xrdp.service.d/ai-workstation.conf <<'EOF'
+[Unit]
+Wants=tailscaled.service network-online.target
+After=tailscaled.service network-online.target
+
+[Service]
+ExecStartPre=/usr/local/sbin/ai-workstation-wait-rdp-address
+EOF
+systemctl daemon-reload
+systemctl unmask xrdp.service xrdp-sesman.service >/dev/null 2>&1 || true
+systemctl enable --now xrdp
+
+echo "==> Enabling automatic security updates"
+dpkg-reconfigure -f noninteractive unattended-upgrades
 
 echo "==> Installing verification command"
 install -m 0755 "$(dirname "$0")/verify.sh" /usr/local/bin/verify-ai-workstation
