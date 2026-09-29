@@ -40,6 +40,7 @@ check_cmd() {
   fi
 }
 
+# shellcheck source=/etc/os-release
 . /etc/os-release
 pass "Ubuntu" "${PRETTY_NAME:-unknown}"
 pass "Architecture" "$(uname -m)"

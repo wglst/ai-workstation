@@ -46,6 +46,7 @@ if [[ "${EUID}" -ne 0 ]]; then
   exit 1
 fi
 
+# shellcheck source=/etc/os-release
 . /etc/os-release
 if [[ "${ID:-}" != "ubuntu" || "${VERSION_ID:-}" != "24.04" ]]; then
   echo "ERROR: Ubuntu 24.04 LTS is required. Detected: ${PRETTY_NAME:-unknown}" >&2
@@ -81,7 +82,9 @@ ln -sf "$(command -v batcat)" /usr/local/bin/bat
 
 echo "==> Installing Docker Engine from Docker's Ubuntu repository"
 for pkg in docker.io docker-compose docker-compose-v2 docker-doc docker-buildx podman-docker containerd runc; do
-  dpkg -s "$pkg" >/dev/null 2>&1 && apt-get remove -y "$pkg" || true
+  if dpkg -s "$pkg" >/dev/null 2>&1; then
+    apt-get remove -y "$pkg"
+  fi
 done
 
 # The Codex Universal image may already include Docker's legacy one-line APT
