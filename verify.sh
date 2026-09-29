@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -u
 
-VERSION="0.6"
+SPEC_VERSION="0.6"
 LOG_DIR="/var/log/ai-workstation"
 REPORT_FILE="$LOG_DIR/report.txt"
 CONFIG_FILE="/etc/ai-workstation/config.env"
@@ -30,8 +30,11 @@ check_cmd() {
   local version_cmd="$3"
   if command -v "$cmd" >/dev/null 2>&1; then
     local v
-    v="$(bash -lc "$version_cmd" 2>&1 | head -n 1)"
-    pass "$label" "$v"
+    if v="$(bash -lc "$version_cmd" 2>&1)"; then
+      pass "$label" "$(head -n 1 <<< "$v")"
+    else
+      fail "$label" "present but version check failed: $(head -n 1 <<< "$v")"
+    fi
   else
     fail "$label" "not found"
   fi
@@ -63,8 +66,8 @@ check_cmd "micro" micro "micro --version"
 check_cmd "bat" bat "bat --version"
 check_cmd "eza" eza "eza --version"
 check_cmd "fzf" fzf "fzf --version"
-check_cmd "VS Code" code "code --version"
-check_cmd "XFCE" xfce4-session "xfce4-session --version"
+check_cmd "VS Code" code "sudo -u '$AI_WORKSTATION_USER' code --version"
+check_cmd "XFCE" xfce4-session "dpkg-query -W -f='\${Version}\\n' xfce4-session"
 check_cmd "XRDP" xrdp "xrdp --version"
 
 if command -v google-chrome >/dev/null 2>&1; then
@@ -161,7 +164,7 @@ fi
   echo "AI WORKSTATION VERIFICATION"
   echo "==========================="
   echo
-  echo "SPEC_VERSION: $VERSION"
+  echo "SPEC_VERSION: $SPEC_VERSION"
   echo "TIMESTAMP: $(date -Is)"
   echo
   printf '%s\n' "${LINES[@]}"

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-VERSION="0.6"
+SPEC_VERSION="0.6"
 LOG_DIR="/var/log/ai-workstation"
 LOG_FILE="$LOG_DIR/install.log"
 REPORT_FILE="$LOG_DIR/report.txt"
@@ -30,7 +30,7 @@ on_error() {
     echo "AI WORKSTATION INSTALLATION"
     echo "==========================="
     echo
-    echo "VERSION: $VERSION"
+    echo "VERSION: $SPEC_VERSION"
     echo "RESULT: FAIL"
     echo "FAILED_COMMAND: ${BASH_COMMAND}"
     echo "EXIT_CODE: $rc"
@@ -52,7 +52,7 @@ if [[ "${ID:-}" != "ubuntu" || "${VERSION_ID:-}" != "24.04" ]]; then
   exit 1
 fi
 
-echo "==> AI Workstation v$VERSION"
+echo "==> AI Workstation v$SPEC_VERSION"
 echo "==> OS: ${PRETTY_NAME}"
 echo "==> Architecture: $(dpkg --print-architecture)"
 echo "==> Started: $(date -Is)"
@@ -83,6 +83,15 @@ echo "==> Installing Docker Engine from Docker's Ubuntu repository"
 for pkg in docker.io docker-compose docker-compose-v2 docker-doc docker-buildx podman-docker containerd runc; do
   dpkg -s "$pkg" >/dev/null 2>&1 && apt-get remove -y "$pkg" || true
 done
+
+# The Codex Universal image may already include Docker's legacy one-line APT
+# source. Preserve it under a disabled filename before writing the authoritative
+# deb822 source below, avoiding duplicate repository warnings.
+if [[ -f /etc/apt/sources.list.d/docker.list ]] \
+  && grep -q 'download.docker.com' /etc/apt/sources.list.d/docker.list; then
+  mv -f /etc/apt/sources.list.d/docker.list \
+    /etc/apt/sources.list.d/docker.list.ai-workstation-disabled
+fi
 
 install -m 0755 -d /etc/apt/keyrings
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
